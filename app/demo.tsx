@@ -7,9 +7,11 @@ import {
   shortenAddress,
 } from "@topazdex/id-connect";
 import { useTopazIdProfile } from "@topazdex/id-connect/react";
-import { useState } from "react";
-import { parseEther } from "viem";
+import { useEffect, useState } from "react";
+import { getAddress, isAddress, parseEther, type Address } from "viem";
 import { useAccount, useSendTransaction } from "wagmi";
+import { DEFAULT_SWAP_TOKEN_ADDRESS } from "@/lib/swap";
+import { SwapCard } from "./swap-card";
 
 function ProfileAccountButton() {
   const { address } = useAccount();
@@ -94,6 +96,73 @@ export function AppNav() {
   );
 }
 
+function SwapSection() {
+  const [tokenInput, setTokenInput] = useState("");
+  const [tokenAddress, setTokenAddress] = useState<Address>(DEFAULT_SWAP_TOKEN_ADDRESS);
+  const [tokenInputError, setTokenInputError] = useState<string | null>(null);
+
+  const applyToken = () => {
+    const trimmed = tokenInput.trim().toLowerCase();
+    if (!isAddress(trimmed)) {
+      setTokenInputError("That doesn't look like a valid BEP-20 contract address.");
+      return;
+    }
+    setTokenAddress(getAddress(trimmed));
+    setTokenInputError(null);
+  };
+
+  const resetToken = () => {
+    setTokenAddress(DEFAULT_SWAP_TOKEN_ADDRESS);
+    setTokenInput("");
+    setTokenInputError(null);
+  };
+
+  return (
+    <div className="swap-section">
+      <div className="swap-section__copy">
+        <p className="eyebrow">On-chain action</p>
+        <h2>Swap BNB for your token.</h2>
+        <p>
+          A working BNB ↔ TOPAZ swap using the direct concentrated-liquidity route on the Topaz
+          SwapRouter, with a live QuoterV2 quote, wallet balances, USD values and logos from
+          Dexscreener, slippage protection, and the ERC-20 approval flow handled for you.
+        </p>
+        <p>
+          In your own app, set <code>NEXT_PUBLIC_SWAP_TOKEN_ADDRESS</code> to your token&apos;s
+          contract address — symbol, decimals, price, and logo are all resolved automatically.
+          Try it live:
+        </p>
+        <div className="token-switcher">
+          <input
+            value={tokenInput}
+            onChange={(event) => setTokenInput(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") applyToken();
+            }}
+            placeholder="Paste any BEP-20 token address…"
+            spellCheck={false}
+            autoComplete="off"
+            aria-label="Token contract address"
+          />
+          <button className="btn btn--secondary" onClick={applyToken} type="button">
+            Use token
+          </button>
+        </div>
+        {tokenInputError && <p className="tx tx--err">{tokenInputError}</p>}
+        {tokenAddress !== DEFAULT_SWAP_TOKEN_ADDRESS && (
+          <p className="token-switcher__active">
+            Swapping <code>{tokenAddress}</code>{" "}
+            <button className="text-link token-switcher__reset" onClick={resetToken} type="button">
+              Reset to default
+            </button>
+          </p>
+        )}
+      </div>
+      <SwapCard key={tokenAddress} tokenAddress={tokenAddress} />
+    </div>
+  );
+}
+
 export function Demo() {
   const { address, isConnected } = useAccount();
   const { data: profile } = useTopazIdProfile(address);
@@ -101,6 +170,14 @@ export function Demo() {
 
   const [txHash, setTxHash] = useState<string | null>(null);
   const [txError, setTxError] = useState<string | null>(null);
+
+  // Connection state can differ between SSR and first client render; gate on
+  // mount so hydration always sees the disconnected markup on both sides.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  const connected = mounted && isConnected && Boolean(address);
 
   const sendSelfTx = async () => {
     if (!address) return;
@@ -125,7 +202,8 @@ export function Demo() {
         <h1>Topaz ID for any BNB Chain app.</h1>
         <p>
           Use the nav account button to connect with Topaz ID, then this sample dapp can read the
-          connected wallet, resolve the user&apos;s Topaz ID profile, and request a normal wallet action.
+          connected wallet, resolve the user&apos;s Topaz ID profile, show token balances, and swap
+          BNB for your project&apos;s token through the Topaz SwapRouter.
         </p>
       </div>
 
@@ -148,19 +226,21 @@ export function Demo() {
         </div>
         <div className="feature-card">
           <span className="feature-card__icon">03</span>
-          <h2>Standard wallet actions</h2>
+          <h2>Token swap</h2>
           <p>
-            Connected users can still sign transactions through RainbowKit, wagmi, and the Topaz ID
-            wallet connector.
+            Quote and swap BNB for your project&apos;s token through the Topaz SwapRouter — point an
+            env var at your token contract and the swap card adapts.
           </p>
         </div>
       </div>
 
+      <SwapSection />
+
       <div className="action-card">
         <div>
-          <h2>{isConnected ? "Try a wallet action" : "Connect to try it"}</h2>
+          <h2>{connected ? "Try a wallet action" : "Connect to try it"}</h2>
           <p>
-            {isConnected && address
+            {connected
               ? profile?.found === false
                 ? "Connected. This wallet does not have a Topaz ID profile yet, so the nav falls back to the address."
                 : "Connected. Click the account pill in the nav to open account options like disconnect."
@@ -168,7 +248,7 @@ export function Demo() {
           </p>
         </div>
 
-        {isConnected && address ? (
+        {connected && address ? (
           <button className="btn" onClick={sendSelfTx} disabled={isPending} type="button">
             {isPending ? "Confirm in wallet…" : "Send 0 BNB to yourself"}
           </button>
