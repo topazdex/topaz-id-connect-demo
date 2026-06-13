@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import { getAddress, isAddress, parseEther, type Address } from "viem";
 import { useAccount, useSendTransaction } from "wagmi";
 import { DEFAULT_SWAP_TOKEN_ADDRESS } from "@/lib/swap";
+import { NavShell } from "./nav";
 import { SwapCard } from "./swap-card";
 
 function ProfileAccountButton() {
@@ -69,31 +70,7 @@ function ProfileAccountButton() {
 }
 
 export function AppNav() {
-  return (
-    <header className="topnav">
-      <a className="brand" href="https://id.topazdex.com" target="_blank" rel="noreferrer">
-        <span className="brand__mark">T</span>
-        <span>
-          <span className="brand__eyebrow">Topaz</span>
-          <span className="brand__name">ID Demo</span>
-        </span>
-      </a>
-
-      <nav className="navlinks" aria-label="Demo links">
-        <a href="https://github.com/topazdex/topaz-id-connect" target="_blank" rel="noreferrer">
-          Package
-        </a>
-        <a href="https://github.com/topazdex/topaz-id-connect-demo" target="_blank" rel="noreferrer">
-          Demo repo
-        </a>
-        <a href="https://id.topazdex.com/developers" target="_blank" rel="noreferrer">
-          Docs
-        </a>
-      </nav>
-
-      <ProfileAccountButton />
-    </header>
-  );
+  return <NavShell accountSlot={<ProfileAccountButton />} />;
 }
 
 function SwapSection() {

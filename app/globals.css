@@ -121,6 +121,57 @@ code {
   color: var(--text);
 }
 
+.nav-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+
+.mode-toggle {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #0d0d14;
+}
+
+.mode-toggle a {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 7px 14px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.mode-toggle a:hover {
+  color: var(--text);
+}
+
+.mode-toggle a[aria-current="page"] {
+  border-color: #e8c47c70;
+  background: #e8c47c14;
+  color: var(--accent);
+}
+
+.snippet {
+  margin: 0;
+  overflow: auto;
+  padding: 14px;
+  border-radius: 12px;
+  background: #ffffff10;
+  color: #ffe4a8;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  white-space: pre;
+}
+
 .account-button {
   justify-self: end;
   display: inline-flex;
@@ -703,10 +754,6 @@ code {
 }
 
 @media (max-width: 840px) {
-  .topnav {
-    grid-template-columns: 1fr auto;
-  }
-
   .navlinks {
     display: none;
   }
@@ -750,6 +797,15 @@ code {
   .brand__mark {
     width: 34px;
     height: 34px;
+  }
+
+  .nav-center {
+    gap: 8px;
+  }
+
+  .mode-toggle a {
+    padding: 6px 10px;
+    font-size: 0.8rem;
   }
 
   .account-button__name {

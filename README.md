@@ -14,6 +14,15 @@ It demonstrates the four things most integrators need:
    SwapRouter, with a live quote, balances, slippage, and the ERC-20
    approval flow.
 
+It ships **two integration styles**, switchable with the toggle in the nav:
+
+- **`/` — Full picker:** Topaz ID alongside MetaMask, WalletConnect, and
+  Rainbow in a RainbowKit multi-wallet picker (`lib/wagmi.ts` +
+  `RainbowKitProvider`). Includes the swap card.
+- **`/minimal` — Minimal:** just Topaz ID via `TopazIdProvider` +
+  `useTopazIdLogin()` — one provider, one hook, no RainbowKit (this route
+  doesn't even bundle it).
+
 ## Run it
 
 ```bash
@@ -31,15 +40,29 @@ Open http://localhost:3000.
 
 ## Where the integration lives
 
+The root `app/layout.tsx` is provider-free; each route group owns its own
+provider stack, so the two styles stay fully isolated.
+
+**Full picker (`/`)**
+
 | File | What it shows |
 | --- | --- |
-| [`lib/wagmi.ts`](lib/wagmi.ts) | `topazIdWallet()` + `TOPAZ_ID_CHAIN` in a wagmi config |
+| [`lib/wagmi.ts`](lib/wagmi.ts) | `topazIdWallet()` + `TOPAZ_ID_CHAIN` (from `@topazdex/id-connect/connectors`) in a wagmi config |
+| [`app/(full)/layout.tsx`](app/(full)/layout.tsx) | SSR hydration via `cookieToInitialState`, wrapping `Providers` |
 | [`app/providers.tsx`](app/providers.tsx) | `WagmiProvider` + React Query + `RainbowKitProvider` |
-| [`app/layout.tsx`](app/layout.tsx) | SSR hydration via `cookieToInitialState` |
 | [`app/demo.tsx`](app/demo.tsx) | `ConnectButton`, `useTopazIdProfile`, `useSendTransaction` |
 | [`lib/swap.ts`](lib/swap.ts) | Topaz contract addresses, ABIs, pool detection, swap calldata builders |
 | [`lib/dexscreener.ts`](lib/dexscreener.ts) | USD prices + token logos from the Dexscreener API |
 | [`app/swap-card.tsx`](app/swap-card.tsx) | Live quote (QuoterV2), balances, USD values, approve + swap flow |
+
+**Minimal (`/minimal`)**
+
+| File | What it shows |
+| --- | --- |
+| [`app/(minimal)/layout.tsx`](app/(minimal)/layout.tsx) | Passes the request cookie to `TopazIdProvider` for SSR |
+| [`app/minimal-providers.tsx`](app/minimal-providers.tsx) | The entire setup: `<TopazIdProvider cookie={cookie}>` |
+| [`app/minimal-demo.tsx`](app/minimal-demo.tsx) | `useTopazIdLogin()` + `useTopazIdProfile()` + `useSendTransaction` — no RainbowKit |
+| [`app/nav.tsx`](app/nav.tsx) | Shared nav + the mode toggle (RainbowKit-free, used by both routes) |
 
 ## The swap card
 

@@ -5,7 +5,7 @@ import {
   rainbowWallet,
   walletConnectWallet,
 } from "@rainbow-me/rainbowkit/wallets";
-import { topazIdWallet, TOPAZ_ID_CHAIN } from "@topazdex/id-connect/rainbow-kit";
+import { topazIdWallet, TOPAZ_ID_CHAIN } from "@topazdex/id-connect/connectors";
 import { cookieStorage, createConfig, createStorage, http } from "wagmi";
 
 const projectId =

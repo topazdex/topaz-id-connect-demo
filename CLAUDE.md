@@ -23,9 +23,11 @@ Use **Yarn 4** (`packageManager` field, `yarn.lock`). Do not use npm or pnpm.
 
 ## Topaz ID integration
 
-- `@topazdex/id-connect` provides `topazIdWallet()` and `TOPAZ_ID_CHAIN` (imported from `@topazdex/id-connect/rainbow-kit`), wired into the RainbowKit picker in `lib/wagmi.ts`.
-- Identity via `useTopazIdProfile(address)` (from `@topazdex/id-connect/react`), used in `app/demo.tsx`.
-- SSR is enabled: wagmi uses `cookieStorage`, and `app/layout.tsx` hydrates initial state from cookies via `cookieToInitialState()`. Preserve this flow when touching providers.
+- The demo ships **two integration styles** as parallel route groups; the root `app/layout.tsx` is provider-free (just `<html>`/`<body>` + global CSS) and each group supplies its own provider stack. `app/nav.tsx` holds the shared nav + the `/` ↔ `/minimal` mode toggle and is deliberately RainbowKit-free so the minimal route never bundles it.
+  - **`app/(full)/` → `/`** (full RainbowKit multi-wallet picker): `app/(full)/layout.tsx` reads the request cookie and wraps children in `Providers` (`app/providers.tsx`). `@topazdex/id-connect` provides `topazIdWallet()` and `TOPAZ_ID_CHAIN` (imported from `@topazdex/id-connect/connectors`), wired into the picker in `lib/wagmi.ts`. UI in `app/demo.tsx`.
+  - **`app/(minimal)/` → `/minimal`** (Topaz-ID-only, no RainbowKit): `app/(minimal)/layout.tsx` passes the cookie to `TopazIdProvider` (`app/minimal-providers.tsx`); `app/minimal-demo.tsx` connects with `useTopazIdLogin()` and reads identity with `useTopazIdProfile()`. Do not import RainbowKit (e.g. `ConnectButton`) into this route — that's the point of contrast.
+- Identity via `useTopazIdProfile(address)` (from `@topazdex/id-connect/react`), used in both `app/demo.tsx` and `app/minimal-demo.tsx`.
+- SSR is enabled: wagmi uses `cookieStorage`, and each route-group layout hydrates initial state from cookies (the full route via `cookieToInitialState()` in `Providers`; the minimal route via the `cookie` prop on `TopazIdProvider`). Preserve this flow when touching providers.
 
 ## Token swap integration
 

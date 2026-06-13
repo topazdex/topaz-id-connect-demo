@@ -1,4 +1,4 @@
-import { AppNav, Demo } from "./demo";
+import { AppNav, Demo } from "@/app/demo";
 
 export default function Home() {
   return (
