@@ -5,11 +5,17 @@ import {
   displayNameForWallet,
   shortenAddress,
 } from "@topazdex/id-connect";
-import { useTopazIdLogin, useTopazIdProfile } from "@topazdex/id-connect/react";
-import { useEffect, useState } from "react";
+import {
+  useTopazIdClient,
+  useTopazIdLogin,
+  useTopazIdProfile,
+} from "@topazdex/id-connect/react";
+import { useState } from "react";
 import { parseEther } from "viem";
 import { useAccount, useSendTransaction } from "wagmi";
 import { NavShell } from "./nav";
+import { SwapSection } from "./swap-section";
+import { useHydrated } from "./use-hydrated";
 
 const PROVIDER_SNIPPET = `// app/(minimal)/layout.tsx — one provider, no RainbowKit
 import { TopazIdProvider } from "@topazdex/id-connect/react";
@@ -25,17 +31,23 @@ import { useTopazIdLogin } from "@topazdex/id-connect/react";
 const { login, logout, isPending } = useTopazIdLogin();
 return <button onClick={login}>Sign in with Topaz ID</button>;`;
 
+const CLIENT_SNIPPET = `// send through the smart wallet — no hand-rolled RPC
+import { useTopazIdClient } from "@topazdex/id-connect/react";
+
+const { data: topazClient } = useTopazIdClient();
+
+await topazClient?.sendTransaction({ to, value: parseEther("0.01") });
+
+// approval + action in ONE confirmation popup
+await topazClient?.sendCalls({ calls: [approveCall, swapCall] });`;
+
 function MinimalAccountButton() {
   const { address, isConnected } = useAccount();
   const { login, logout, isPending } = useTopazIdLogin();
   const { data: profile, isLoading: profileLoading } = useTopazIdProfile(address);
+  const hydrated = useHydrated();
 
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  if (!mounted) {
+  if (!hydrated) {
     return <div className="account-button account-button--skeleton" />;
   }
 
@@ -78,31 +90,47 @@ function MinimalAccountButton() {
   );
 }
 
+function SwapConnectButton() {
+  const { login, isPending } = useTopazIdLogin();
+  const hydrated = useHydrated();
+
+  return (
+    <button
+      className="btn swap-card__cta"
+      onClick={() => login()}
+      disabled={!hydrated || isPending}
+      type="button"
+    >
+      {isPending ? "Connecting…" : "Connect to swap"}
+    </button>
+  );
+}
+
 export function MinimalDemo() {
   const { address, isConnected } = useAccount();
   const { login, isPending: loginPending } = useTopazIdLogin();
   const { data: profile } = useTopazIdProfile(address);
+  const { data: topazClient } = useTopazIdClient();
   const { sendTransactionAsync, isPending: txPending } = useSendTransaction();
 
   const [txHash, setTxHash] = useState<string | null>(null);
   const [txError, setTxError] = useState<string | null>(null);
 
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-  const connected = mounted && isConnected && Boolean(address);
+  const hydrated = useHydrated();
+  const connected = hydrated && isConnected && Boolean(address);
 
   const sendSelfTx = async () => {
     if (!address) return;
     setTxHash(null);
     setTxError(null);
     try {
-      const hash = await sendTransactionAsync({
-        to: address,
-        value: parseEther("0"),
-        chainId: 56,
-      });
+      const hash = topazClient
+        ? await topazClient.sendTransaction({ to: address, value: parseEther("0") })
+        : await sendTransactionAsync({
+            to: address,
+            value: parseEther("0"),
+            chainId: 56,
+          });
       setTxHash(hash);
     } catch (err) {
       setTxError(err instanceof Error ? err.message : "Transaction failed");
@@ -181,6 +209,11 @@ export function MinimalDemo() {
           <pre className="snippet">{HOOK_SNIPPET}</pre>
         </div>
 
+        <div className="install-card">
+          <span>Smart-wallet client</span>
+          <pre className="snippet">{CLIENT_SNIPPET}</pre>
+        </div>
+
         <div className="action-card">
           <div>
             <h2>{connected ? "Try a wallet action" : "Connect to try it"}</h2>
@@ -188,7 +221,7 @@ export function MinimalDemo() {
               {connected
                 ? profile?.found === false
                   ? "Connected. This wallet has no Topaz ID profile yet, so the nav falls back to the address."
-                  : "Connected through TopazIdProvider — wagmi hooks work exactly as they do in the full demo."
+                  : "Connected through TopazIdProvider — the send below goes through useTopazIdClient's smart-wallet client, and wagmi hooks still work for reads."
                 : "Click below (or the nav button) to open the Topaz ID consent popup. SSR keeps you connected across refresh via the request cookie."}
             </p>
           </div>
@@ -201,7 +234,7 @@ export function MinimalDemo() {
             <button
               className="btn"
               onClick={() => login()}
-              disabled={!mounted || loginPending}
+              disabled={!hydrated || loginPending}
               type="button"
             >
               {loginPending ? "Connecting…" : "Connect with Topaz ID"}
@@ -221,10 +254,13 @@ export function MinimalDemo() {
         )}
         {txError && <p className="tx tx--err">{txError}</p>}
 
+        <SwapSection connectSlot={<SwapConnectButton />} />
+
         <p className="swap-card__note">
-          Want the multi-wallet picker (MetaMask, WalletConnect, Rainbow) and the live token
-          swap? Those live on the <strong>Full picker</strong> route — switch with the toggle
-          in the nav.
+          That swap card is the exact same component as the full demo — it runs through{" "}
+          <code>TopazIdProvider</code> with no RainbowKit on the page. Want the multi-wallet
+          picker (MetaMask, WalletConnect, Rainbow) instead? Switch to the{" "}
+          <strong>Full picker</strong> route with the toggle in the nav.
         </p>
       </section>
     </main>

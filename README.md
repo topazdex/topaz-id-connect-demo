@@ -8,11 +8,13 @@ It demonstrates the four things most integrators need:
 1. **Connect** — Topaz ID in the RainbowKit picker (`topazIdWallet`).
 2. **Identity** — render the user's Topaz ID name + avatar with
    `useTopazIdProfile` instead of a bare address.
-3. **Sign** — send a transaction through the Topaz ID consent popup
-   (`useSendTransaction`).
+3. **Send** — transactions go through the Topaz ID **smart-wallet client**
+   (`useTopazIdClient`, new in `@topazdex/id-connect` 0.4.0), with plain wagmi
+   (`useSendTransaction`) as the fallback for other wallets.
 4. **Swap** — a working BNB ↔ TOPAZ token swap through the Topaz
    SwapRouter, with a live quote, balances, slippage, and the ERC-20
-   approval flow.
+   approval flow — batched into a **single confirmation** (`sendCalls`)
+   when connected with Topaz ID.
 
 It ships **two integration styles**, switchable with the toggle in the nav:
 
@@ -50,10 +52,10 @@ provider stack, so the two styles stay fully isolated.
 | [`lib/wagmi.ts`](lib/wagmi.ts) | `topazIdWallet()` + `TOPAZ_ID_CHAIN` (from `@topazdex/id-connect/connectors`) in a wagmi config |
 | [`app/(full)/layout.tsx`](app/(full)/layout.tsx) | SSR hydration via `cookieToInitialState`, wrapping `Providers` |
 | [`app/providers.tsx`](app/providers.tsx) | `WagmiProvider` + React Query + `RainbowKitProvider` |
-| [`app/demo.tsx`](app/demo.tsx) | `ConnectButton`, `useTopazIdProfile`, `useSendTransaction` |
+| [`app/demo.tsx`](app/demo.tsx) | `ConnectButton`, `useTopazIdProfile`, `useTopazIdClient` send (wagmi fallback) |
 | [`lib/swap.ts`](lib/swap.ts) | Topaz contract addresses, ABIs, pool detection, swap calldata builders |
 | [`lib/dexscreener.ts`](lib/dexscreener.ts) | USD prices + token logos from the Dexscreener API |
-| [`app/swap-card.tsx`](app/swap-card.tsx) | Live quote (QuoterV2), balances, USD values, approve + swap flow |
+| [`app/swap-card.tsx`](app/swap-card.tsx) | Live quote (QuoterV2), balances, USD values, approve + swap — one batched confirmation on Topaz ID (`sendCalls`), classic two-step flow on other wallets |
 
 **Minimal (`/minimal`)**
 
@@ -61,8 +63,42 @@ provider stack, so the two styles stay fully isolated.
 | --- | --- |
 | [`app/(minimal)/layout.tsx`](app/(minimal)/layout.tsx) | Passes the request cookie to `TopazIdProvider` for SSR |
 | [`app/minimal-providers.tsx`](app/minimal-providers.tsx) | The entire setup: `<TopazIdProvider cookie={cookie}>` |
-| [`app/minimal-demo.tsx`](app/minimal-demo.tsx) | `useTopazIdLogin()` + `useTopazIdProfile()` + `useSendTransaction` — no RainbowKit |
+| [`app/minimal-demo.tsx`](app/minimal-demo.tsx) | `useTopazIdLogin()` + `useTopazIdProfile()` + `useTopazIdClient()` sends — no RainbowKit |
 | [`app/nav.tsx`](app/nav.tsx) | Shared nav + the mode toggle (RainbowKit-free, used by both routes) |
+
+## Sending transactions (the smart-wallet client)
+
+The connected Topaz ID account is a **smart contract wallet**, and the smoothest
+way to transact with it is the high-level client that ships with
+`@topazdex/id-connect` 0.4.0:
+
+```tsx
+import { useTopazIdClient } from "@topazdex/id-connect/react";
+
+const { data: topazClient, isTopazId } = useTopazIdClient();
+
+// single send — value is a bigint, encoded losslessly by the SDK
+await topazClient?.sendTransaction({ to, value: parseEther("0.01") });
+
+// approval + action in ONE consent popup, executed atomically
+await topazClient?.sendCalls({
+  calls: [approveCall, swapCall],
+});
+```
+
+`data` is `undefined` when the connected wallet isn't Topaz ID, so the drop-in
+pattern for a multi-wallet dapp is exactly what this demo does everywhere:
+
+```ts
+const hash = topazClient
+  ? await topazClient.sendTransaction({ to, value })
+  : await sendTransactionAsync({ to, value, chainId: 56 }); // any other wallet
+```
+
+Framework-agnostic apps (no React) can do the same via
+`createTopazIdClient` from `@topazdex/id-connect/actions`. See the
+[package README](https://github.com/topazdex/topaz-id-connect#using-the-wallet)
+for the full API.
 
 ## The swap card
 
@@ -73,8 +109,9 @@ concentrated-liquidity route on the Topaz `SwapRouter`
 - **BNB → token** sends native BNB (`value = amountIn`, `refundETH` for
   dust) — no approval needed.
 - **Token → BNB** swaps to the router and `unwrapWETH9` pays out native
-  BNB — the card surfaces the ERC-20 `approve` step first when the
-  allowance is too low.
+  BNB — when the allowance is too low, Topaz ID connections batch the
+  ERC-20 `approve` + swap into **one confirmation** (`sendCalls`); other
+  wallets get the classic two-step approve-then-swap flow.
 - Quotes come from `QuoterV2.quoteExactInputSingle` and refresh every
   10 seconds; `amountOutMinimum` enforces the selected slippage
   (0.5% / 1% / 3%).

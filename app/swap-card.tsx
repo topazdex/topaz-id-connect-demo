@@ -1,8 +1,8 @@
 "use client";
 
-import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useTopazIdClient } from "@topazdex/id-connect/react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { erc20Abi, formatUnits, parseEther, parseUnits, type Address } from "viem";
 import {
   useAccount,
@@ -37,6 +37,7 @@ import {
   swapDeadline,
   swapRouterAbi,
 } from "@/lib/swap";
+import { useHydrated } from "./use-hydrated";
 
 const GAS_RESERVE_WEI = parseEther("0.001");
 
@@ -76,8 +77,16 @@ function TokenChip({ symbol, logoUrl }: { symbol: string; logoUrl: string | null
   );
 }
 
-export function SwapCard({ tokenAddress }: { tokenAddress: Address }) {
+export function SwapCard({
+  tokenAddress,
+  connectSlot,
+}: {
+  tokenAddress: Address;
+  connectSlot: ReactNode;
+}) {
   const { address, isConnected } = useAccount();
+
+  const mounted = useHydrated();
 
   const [direction, setDirection] = useState<Direction>("bnb-to-token");
   const [amountInput, setAmountInput] = useState("");
@@ -220,6 +229,8 @@ export function SwapCard({ tokenAddress }: { tokenAddress: Address }) {
     !isBnbIn && amountIn !== null && allowance !== undefined && allowance < amountIn;
 
   const { writeContractAsync, isPending: writePending } = useWriteContract();
+  const { data: topazClient } = useTopazIdClient();
+  const [topazPending, setTopazPending] = useState(false);
   const { isLoading: txConfirming, isSuccess: txConfirmed } =
     useWaitForTransactionReceipt({
       hash: txHash ?? undefined,
@@ -305,17 +316,68 @@ export function SwapCard({ tokenAddress }: { tokenAddress: Address }) {
     }
   };
 
-  const busy = writePending || txConfirming;
+  const swapWithTopazId = async () => {
+    if (!topazClient || !address || amountIn === null || minOut === undefined || !pool) return;
+    resetTxState();
+    setTopazPending(true);
+    try {
+      const params = {
+        token: tokenAddress,
+        tickSpacing: pool.tickSpacing,
+        amountIn,
+        amountOutMinimum: minOut,
+        recipient: address,
+        deadline: swapDeadline(),
+      };
+      const calls = isBnbIn
+        ? buildBnbToTokenCalls(params)
+        : buildTokenToBnbCalls(params);
+      const swapCall = {
+        address: TOPAZ_SWAP_ROUTER,
+        abi: swapRouterAbi,
+        functionName: "multicall",
+        args: [calls],
+        ...(isBnbIn ? { value: amountIn } : {}),
+      };
+      const hash = needsApproval
+        ? await topazClient.sendCalls({
+            calls: [
+              {
+                address: tokenAddress,
+                abi: erc20Abi,
+                functionName: "approve",
+                args: [TOPAZ_SWAP_ROUTER, amountIn],
+              },
+              swapCall,
+            ],
+          })
+        : await topazClient.writeContract(swapCall);
+      setTxKind("swap");
+      setTxHash(hash);
+    } catch (err) {
+      setTxError(friendlySwapError(err));
+    } finally {
+      setTopazPending(false);
+    }
+  };
 
-  let buttonLabel = needsApproval ? `Approve ${tokenSymbol}` : "Swap";
+  const confirmPending = writePending || topazPending;
+  const busy = confirmPending || txConfirming;
+  const swapNow = Boolean(topazClient) || !needsApproval;
+
+  let buttonLabel = needsApproval
+    ? topazClient
+      ? `Approve ${tokenSymbol} + swap`
+      : `Approve ${tokenSymbol}`
+    : "Swap";
   if (poolDetecting) buttonLabel = "Finding pool…";
   else if (poolMissing) buttonLabel = "No pool for this pair";
   else if (amountIn === null) buttonLabel = "Enter an amount";
   else if (insufficient) buttonLabel = `Insufficient ${inputSymbol} balance`;
-  else if (writePending) buttonLabel = "Confirm in wallet…";
+  else if (confirmPending) buttonLabel = "Confirm in wallet…";
   else if (txConfirming) buttonLabel = txKind === "approve" ? "Approving…" : "Swapping…";
   else if (quoteError) buttonLabel = "No route available";
-  else if (!needsApproval && expectedOut === undefined && quoteFetching)
+  else if (swapNow && expectedOut === undefined && quoteFetching)
     buttonLabel = "Fetching quote…";
 
   const buttonDisabled =
@@ -325,9 +387,9 @@ export function SwapCard({ tokenAddress }: { tokenAddress: Address }) {
     insufficient ||
     busy ||
     Boolean(quoteError) ||
-    (!needsApproval && minOut === undefined);
+    (swapNow && minOut === undefined);
 
-  const onAction = needsApproval ? approve : swap;
+  const onAction = topazClient ? swapWithTopazId : needsApproval ? approve : swap;
 
   return (
     <div className="swap-card">
@@ -447,29 +509,18 @@ export function SwapCard({ tokenAddress }: { tokenAddress: Address }) {
         </div>
       </dl>
 
-      <ConnectButton.Custom>
-        {({ mounted, openConnectModal }) =>
-          mounted && isConnected && address ? (
-            <button
-              className="btn swap-card__cta"
-              onClick={() => void onAction()}
-              disabled={buttonDisabled}
-              type="button"
-            >
-              {buttonLabel}
-            </button>
-          ) : (
-            <button
-              className="btn swap-card__cta"
-              onClick={openConnectModal}
-              disabled={!mounted}
-              type="button"
-            >
-              Connect to swap
-            </button>
-          )
-        }
-      </ConnectButton.Custom>
+      {mounted && isConnected && address ? (
+        <button
+          className="btn swap-card__cta"
+          onClick={() => void onAction()}
+          disabled={buttonDisabled}
+          type="button"
+        >
+          {buttonLabel}
+        </button>
+      ) : (
+        connectSlot
+      )}
 
       {poolMissing && (
         <p className="tx tx--err">
@@ -506,6 +557,9 @@ export function SwapCard({ tokenAddress }: { tokenAddress: Address }) {
         logos via Dexscreener.
         {pool
           ? ` Swaps go through the WBNB/${tokenSymbol} concentrated-liquidity pool (tick spacing ${pool.tickSpacing}).`
+          : ""}
+        {topazClient
+          ? " Connected with Topaz ID — approval and swap batch into a single confirmation via the smart-wallet client."
           : ""}
       </p>
     </div>
