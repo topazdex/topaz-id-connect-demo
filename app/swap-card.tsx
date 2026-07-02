@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useTopazIdClient } from "@topazdex/id-connect/react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { erc20Abi, formatUnits, parseEther, parseUnits, type Address } from "viem";
 import {
   useAccount,
@@ -11,7 +11,6 @@ import {
   useReadContract,
   useReadContracts,
   useSimulateContract,
-  useWaitForTransactionReceipt,
   useWriteContract,
 } from "wagmi";
 import {
@@ -231,23 +230,38 @@ export function SwapCard({
   const { writeContractAsync, isPending: writePending } = useWriteContract();
   const { data: topazClient } = useTopazIdClient();
   const [topazPending, setTopazPending] = useState(false);
-  const { isLoading: txConfirming, isSuccess: txConfirmed } =
-    useWaitForTransactionReceipt({
-      hash: txHash ?? undefined,
-      chainId: BNB_CHAIN_ID,
-    });
-
-  useEffect(() => {
-    if (!txConfirmed) return;
-    void refetchBnbBalance();
-    void refetchTokenBalance();
-    void refetchAllowance();
-  }, [txConfirmed, refetchBnbBalance, refetchTokenBalance, refetchAllowance]);
+  const [txStatus, setTxStatus] = useState<"idle" | "confirming" | "settled">("idle");
+  const txConfirming = txStatus === "confirming";
 
   const resetTxState = () => {
     setTxHash(null);
     setTxKind(null);
     setTxError(null);
+    setTxStatus("idle");
+  };
+
+  // Receipts are best-effort: some smart-wallet flows return an id that
+  // eth_getTransactionReceipt never resolves, so a bounded receipt wait falls
+  // back to balance refetches instead of pinning the UI on "Pending" forever.
+  const settleTx = async (hash: `0x${string}`) => {
+    setTxStatus("confirming");
+    try {
+      if (publicClient) {
+        const receipt = await publicClient.waitForTransactionReceipt({
+          hash,
+          timeout: 60_000,
+        });
+        if (receipt.status === "reverted") {
+          setTxError("Transaction reverted on-chain.");
+        }
+      }
+    } catch {
+      // Unresolvable hash or timeout — the refetches below reflect the outcome.
+    }
+    void refetchBnbBalance();
+    void refetchTokenBalance();
+    void refetchAllowance();
+    setTxStatus("settled");
   };
 
   const flipDirection = () => {
@@ -281,6 +295,7 @@ export function SwapCard({
       });
       setTxKind("approve");
       setTxHash(hash);
+      void settleTx(hash);
     } catch (err) {
       setTxError(friendlySwapError(err));
     }
@@ -311,6 +326,7 @@ export function SwapCard({
       });
       setTxKind("swap");
       setTxHash(hash);
+      void settleTx(hash);
     } catch (err) {
       setTxError(friendlySwapError(err));
     }
@@ -354,6 +370,7 @@ export function SwapCard({
         : await topazClient.writeContract(swapCall);
       setTxKind("swap");
       setTxHash(hash);
+      void settleTx(hash);
     } catch (err) {
       setTxError(friendlySwapError(err));
     } finally {
@@ -546,9 +563,11 @@ export function SwapCard({
         >
           {txConfirming
             ? "Pending — view on BscScan ↗"
-            : txKind === "approve"
-              ? "Approved — now hit Swap ↗"
-              : "Swapped — view on BscScan ↗"}
+            : txError
+              ? "View on BscScan ↗"
+              : txKind === "approve"
+                ? "Approved — now hit Swap ↗"
+                : "Swapped — view on BscScan ↗"}
         </a>
       )}
 

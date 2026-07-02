@@ -77,7 +77,7 @@ import { useTopazIdClient } from "@topazdex/id-connect/react";
 
 const { data: topazClient, isTopazId } = useTopazIdClient();
 
-// single send — value is a bigint, encoded losslessly by the SDK
+// single send — pass value as a bigint; the SDK formats it for the popup
 await topazClient?.sendTransaction({ to, value: parseEther("0.01") });
 
 // approval + action in ONE consent popup, executed atomically
@@ -85,6 +85,13 @@ await topazClient?.sendCalls({
   calls: [approveCall, swapCall],
 });
 ```
+
+Two wire-format details the SDK hides (and why raw wagmi sends fail): the Topaz
+popup accepts native `value` only as a plain JSON number — wagmi's hex encoding
+is rejected, which is what breaks value-bearing transactions on raw connector
+integrations. And if the popup rejects a `sendCalls` bundle, the SDK
+automatically falls back to sequential sends (one popup per call); pass
+`atomicRequired: true` to opt out.
 
 `data` is `undefined` when the connected wallet isn't Topaz ID, so the drop-in
 pattern for a multi-wallet dapp is exactly what this demo does everywhere:

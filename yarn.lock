@@ -2295,9 +2295,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@topazdex/id-connect@npm:^0.4.0":
-  version: 0.4.0
-  resolution: "@topazdex/id-connect@npm:0.4.0"
+"@topazdex/id-connect@npm:^0.4.1":
+  version: 0.4.1
+  resolution: "@topazdex/id-connect@npm:0.4.1"
   peerDependencies:
     "@privy-io/cross-app-connect": ^0.5.12
     "@privy-io/react-auth": ^2 || ^3
@@ -2321,7 +2321,7 @@ __metadata:
       optional: true
     wagmi:
       optional: true
-  checksum: 10c0/744de33fcf37e74fb71a02c086b27f0b1a53a96bc7f058525509b3ebacb56fb8d23038272e80ef00f547ec0a09f8dcf59c9b063cb6348137f2a3b86c8f4b94a1
+  checksum: 10c0/78e1f558976e786b9f3b68fc7c7974431e17b7f890b40527b61ba18ae4d15afc00251c2acf20622e22855a8c7b2fefcfc8001f57668b9b7c8d4bfb785c00f950
   languageName: node
   linkType: hard
 
@@ -7759,7 +7759,7 @@ __metadata:
     "@privy-io/cross-app-connect": "npm:^0.5.12"
     "@rainbow-me/rainbowkit": "npm:^2.2.3"
     "@tanstack/react-query": "npm:^5.59.0"
-    "@topazdex/id-connect": "npm:^0.4.0"
+    "@topazdex/id-connect": "npm:^0.4.1"
     "@types/node": "npm:^22.10.0"
     "@types/react": "npm:^19.0.0"
     "@types/react-dom": "npm:^19.0.0"
