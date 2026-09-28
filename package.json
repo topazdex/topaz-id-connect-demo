@@ -2,7 +2,6 @@
   "name": "topaz-id-connect-demo",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
   "packageManager": "yarn@4.12.0",
   "scripts": {
     "dev": "next dev",
