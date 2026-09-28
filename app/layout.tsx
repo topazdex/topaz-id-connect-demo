@@ -6,7 +6,7 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "Topaz ID Connect — Demo",
   description:
-    "A minimal dapp showing one-click Topaz ID login on BNB Chain with @topazdex/id-connect.",
+    "A minimal dapp showing one-click Topaz ID login on BNB Chain, Robinhood Chain, Base, Ethereum, and Arc with @topazdex/id-connect.",
 };
 
 export default function RootLayout({

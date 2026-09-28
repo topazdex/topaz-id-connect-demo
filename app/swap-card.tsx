@@ -11,6 +11,7 @@ import {
   useReadContract,
   useReadContracts,
   useSimulateContract,
+  useSwitchChain,
   useWriteContract,
 } from "wagmi";
 import {
@@ -83,7 +84,8 @@ export function SwapCard({
   tokenAddress: Address;
   connectSlot: ReactNode;
 }) {
-  const { address, isConnected } = useAccount();
+  const { address, chainId, isConnected } = useAccount();
+  const { switchChain, isPending: switchingChain } = useSwitchChain();
 
   const mounted = useHydrated();
 
@@ -240,13 +242,20 @@ export function SwapCard({
     setTxStatus("idle");
   };
 
-  // Receipts are best-effort: some smart-wallet flows return an id that
-  // eth_getTransactionReceipt never resolves, so a bounded receipt wait falls
-  // back to balance refetches instead of pinning the UI on "Pending" forever.
+  // Receipts are best-effort: a Topaz ID send can return a UserOperation hash,
+  // which the client's waitForReceipt resolves through the EntryPoint's logs
+  // (and it reports the operation's own outcome, not just the bundle's). The
+  // bounded wait falls back to balance refetches instead of pinning the UI on
+  // "Pending" forever.
   const settleTx = async (hash: `0x${string}`) => {
     setTxStatus("confirming");
     try {
-      if (publicClient) {
+      if (topazClient) {
+        const receipt = await topazClient.waitForReceipt(hash, { timeout: 60_000 });
+        if (receipt?.status === "0x0") {
+          setTxError("Transaction reverted on-chain.");
+        }
+      } else if (publicClient) {
         const receipt = await publicClient.waitForTransactionReceipt({
           hash,
           timeout: 60_000,
@@ -412,7 +421,7 @@ export function SwapCard({
     <div className="swap-card">
       <div className="swap-card__head">
         <h2>Swap</h2>
-        <span className="swap-card__route">Topaz SwapRouter · direct CL route</span>
+        <span className="swap-card__route">Topaz SwapRouter · direct CL route · BNB Chain</span>
       </div>
 
       <div className="swap-field">
@@ -527,14 +536,25 @@ export function SwapCard({
       </dl>
 
       {mounted && isConnected && address ? (
-        <button
-          className="btn swap-card__cta"
-          onClick={() => void onAction()}
-          disabled={buttonDisabled}
-          type="button"
-        >
-          {buttonLabel}
-        </button>
+        chainId === BNB_CHAIN_ID ? (
+          <button
+            className="btn swap-card__cta"
+            onClick={() => void onAction()}
+            disabled={buttonDisabled}
+            type="button"
+          >
+            {buttonLabel}
+          </button>
+        ) : (
+          <button
+            className="btn swap-card__cta"
+            onClick={() => switchChain({ chainId: BNB_CHAIN_ID })}
+            disabled={switchingChain}
+            type="button"
+          >
+            {switchingChain ? "Switching…" : "Switch to BNB Chain to swap"}
+          </button>
+        )
       ) : (
         connectSlot
       )}

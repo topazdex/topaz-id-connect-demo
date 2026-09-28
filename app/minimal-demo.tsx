@@ -5,24 +5,25 @@ import {
   displayNameForWallet,
   shortenAddress,
 } from "@topazdex/id-connect";
-import {
-  useTopazIdClient,
-  useTopazIdLogin,
-  useTopazIdProfile,
-} from "@topazdex/id-connect/react";
-import { useState } from "react";
-import { parseEther } from "viem";
-import { useAccount, useSendTransaction } from "wagmi";
+import { useTopazIdLogin, useTopazIdProfile } from "@topazdex/id-connect/react";
+import { useAccount } from "wagmi";
+import { ChainsPanel } from "./chains-panel";
 import { NavShell } from "./nav";
+import { SelfSend } from "./self-send";
 import { SwapSection } from "./swap-section";
 import { useHydrated } from "./use-hydrated";
 
 const PROVIDER_SNIPPET = `// app/(minimal)/layout.tsx — one provider, no RainbowKit
+import { TOPAZ_ID_CHAINS } from "@topazdex/id-connect/chains";
 import { TopazIdProvider } from "@topazdex/id-connect/react";
 
 export default async function Layout({ children }) {
   const cookie = (await headers()).get("cookie");
-  return <TopazIdProvider cookie={cookie}>{children}</TopazIdProvider>;
+  return (
+    <TopazIdProvider chains={TOPAZ_ID_CHAINS} cookie={cookie}>
+      {children}
+    </TopazIdProvider>
+  );
 }`;
 
 const HOOK_SNIPPET = `// any client component
@@ -36,7 +37,8 @@ import { useTopazIdClient } from "@topazdex/id-connect/react";
 
 const { data: topazClient } = useTopazIdClient();
 
-await topazClient?.sendTransaction({ to, value: parseEther("0.01") });
+const hash = await topazClient?.sendTransaction({ to, value: parseEther("0.01") });
+const receipt = await topazClient?.waitForReceipt(hash); // resolves UserOperation hashes too
 
 // approval + action in ONE confirmation popup
 await topazClient?.sendCalls({ calls: [approveCall, swapCall] });`;
@@ -55,7 +57,7 @@ function MinimalAccountButton() {
     return (
       <button
         className="account-button account-button--connect"
-        onClick={() => login()}
+        onClick={login}
         disabled={isPending}
         type="button"
       >
@@ -72,7 +74,7 @@ function MinimalAccountButton() {
   return (
     <button
       className="account-button"
-      onClick={() => logout()}
+      onClick={logout}
       title="Disconnect"
       type="button"
     >
@@ -97,7 +99,7 @@ function SwapConnectButton() {
   return (
     <button
       className="btn swap-card__cta"
-      onClick={() => login()}
+      onClick={login}
       disabled={!hydrated || isPending}
       type="button"
     >
@@ -106,37 +108,18 @@ function SwapConnectButton() {
   );
 }
 
-export function MinimalDemo() {
-  const { address, isConnected } = useAccount();
-  const { login, isPending: loginPending } = useTopazIdLogin();
-  const { data: profile } = useTopazIdProfile(address);
-  const { data: topazClient } = useTopazIdClient();
-  const { sendTransactionAsync, isPending: txPending } = useSendTransaction();
-
-  const [txHash, setTxHash] = useState<string | null>(null);
-  const [txError, setTxError] = useState<string | null>(null);
-
+function ActionConnectButton() {
+  const { login, isPending } = useTopazIdLogin();
   const hydrated = useHydrated();
-  const connected = hydrated && isConnected && Boolean(address);
 
-  const sendSelfTx = async () => {
-    if (!address) return;
-    setTxHash(null);
-    setTxError(null);
-    try {
-      const hash = topazClient
-        ? await topazClient.sendTransaction({ to: address, value: parseEther("0") })
-        : await sendTransactionAsync({
-            to: address,
-            value: parseEther("0"),
-            chainId: 56,
-          });
-      setTxHash(hash);
-    } catch (err) {
-      setTxError(err instanceof Error ? err.message : "Transaction failed");
-    }
-  };
+  return (
+    <button className="btn" onClick={login} disabled={!hydrated || isPending} type="button">
+      {isPending ? "Connecting…" : "Connect with Topaz ID"}
+    </button>
+  );
+}
 
+export function MinimalDemo() {
   return (
     <main className="page-shell">
       <NavShell accountSlot={<MinimalAccountButton />} />
@@ -148,8 +131,8 @@ export function MinimalDemo() {
           <p>
             The same app, wired with <code>TopazIdProvider</code> and{" "}
             <code>useTopazIdLogin()</code> instead of RainbowKit. One provider sets up wagmi
-            and React Query for you, and a single hook drives the consent popup — this route
-            never bundles RainbowKit or any other connector.
+            for the chains you pass and React Query for you, and a single hook drives the
+            consent popup — this route never bundles RainbowKit or any other connector.
           </p>
           <div className="hero-actions">
             <a className="text-link" href="https://www.npmjs.com/package/@topazdex/id-connect" target="_blank" rel="noreferrer">
@@ -170,8 +153,8 @@ export function MinimalDemo() {
           <h1>Three lines to a signed-in user.</h1>
           <p>
             Use the account button in the nav to connect with Topaz ID, then this page reads
-            the connected wallet, resolves the profile, and sends a transaction — all without
-            RainbowKit on the page.
+            the connected wallet, resolves the profile, switches chains, and sends a
+            transaction — all without RainbowKit on the page.
           </p>
         </div>
 
@@ -180,9 +163,9 @@ export function MinimalDemo() {
             <span className="feature-card__icon">01</span>
             <h2>One provider</h2>
             <p>
-              <code>TopazIdProvider</code> creates the wagmi config (BNB Chain + the Topaz ID
-              connector) and a React Query client. No <code>createConfig</code>, no{" "}
-              <code>QueryClientProvider</code>.
+              <code>TopazIdProvider</code> creates the wagmi config (the Topaz ID chains you
+              pass + the Topaz ID connector) and a React Query client. No{" "}
+              <code>createConfig</code>, no <code>QueryClientProvider</code>.
             </p>
           </div>
           <div className="feature-card">
@@ -214,45 +197,12 @@ export function MinimalDemo() {
           <pre className="snippet">{CLIENT_SNIPPET}</pre>
         </div>
 
-        <div className="action-card">
-          <div>
-            <h2>{connected ? "Try a wallet action" : "Connect to try it"}</h2>
-            <p>
-              {connected
-                ? profile?.found === false
-                  ? "Connected. This wallet has no Topaz ID profile yet, so the nav falls back to the address."
-                  : "Connected through TopazIdProvider — the send below goes through useTopazIdClient's smart-wallet client, and wagmi hooks still work for reads."
-                : "Click below (or the nav button) to open the Topaz ID consent popup. SSR keeps you connected across refresh via the request cookie."}
-            </p>
-          </div>
+        <ChainsPanel />
 
-          {connected && address ? (
-            <button className="btn" onClick={sendSelfTx} disabled={txPending} type="button">
-              {txPending ? "Confirm in wallet…" : "Send 0 BNB to yourself"}
-            </button>
-          ) : (
-            <button
-              className="btn"
-              onClick={() => login()}
-              disabled={!hydrated || loginPending}
-              type="button"
-            >
-              {loginPending ? "Connecting…" : "Connect with Topaz ID"}
-            </button>
-          )}
-        </div>
-
-        {txHash && (
-          <a
-            className="tx tx--ok"
-            href={`https://bscscan.com/tx/${txHash}`}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Sent — view on BscScan ↗
-          </a>
-        )}
-        {txError && <p className="tx tx--err">{txError}</p>}
+        <SelfSend
+          connectSlot={<ActionConnectButton />}
+          idleCopy="Click below (or the nav button) to open the Topaz ID consent popup. SSR keeps you connected across refresh via the request cookie."
+        />
 
         <SwapSection connectSlot={<SwapConnectButton />} />
 

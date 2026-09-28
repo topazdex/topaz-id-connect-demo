@@ -1,19 +1,24 @@
 # Topaz ID Connect — Demo
 
-A minimal Next.js (App Router) dapp showing one-click **Topaz ID** login on BNB
-Chain using [`@topazdex/id-connect`](https://www.npmjs.com/package/@topazdex/id-connect).
+A minimal Next.js (App Router) dapp showing one-click **Topaz ID** login on
+BNB Chain, Robinhood Chain, Base, Ethereum, and Arc using
+[`@topazdex/id-connect`](https://www.npmjs.com/package/@topazdex/id-connect).
 
-It demonstrates the four things most integrators need:
+It demonstrates the five things most integrators need:
 
 1. **Connect** — Topaz ID in the RainbowKit picker (`topazIdWallet`).
 2. **Identity** — render the user's Topaz ID name + avatar with
    `useTopazIdProfile` instead of a bare address.
-3. **Send** — transactions go through the Topaz ID **smart-wallet client**
-   (`useTopazIdClient`, new in `@topazdex/id-connect` 0.4.0), with plain wagmi
-   (`useSendTransaction`) as the fallback for other wallets.
-4. **Swap** — a working BNB ↔ TOPAZ token swap through the Topaz
-   SwapRouter, with a live quote, balances, slippage, and the ERC-20
-   approval flow — batched into a **single confirmation** (`sendCalls`)
+3. **Chains** — every Topaz ID chain in one wagmi config (`TOPAZ_ID_CHAINS`),
+   a switcher, and per-chain gas facts from `TOPAZ_ID_CHAIN_INFO` (Topaz
+   sponsors gas on BNB Chain only).
+4. **Send** — transactions go through the Topaz ID **smart-wallet client**
+   (`useTopazIdClient`), confirmed with `waitForReceipt` (which also resolves
+   UserOperation hashes), with plain wagmi (`useSendTransaction`) as the
+   fallback for other wallets.
+5. **Swap** — a working BNB ↔ TOPAZ token swap through the Topaz
+   SwapRouter on BNB Chain, with a live quote, balances, slippage, and the
+   ERC-20 approval flow — batched into a **single confirmation** (`sendCalls`)
    when connected with Topaz ID.
 
 It ships **two integration styles**, switchable with the toggle in the nav:
@@ -49,10 +54,12 @@ provider stack, so the two styles stay fully isolated.
 
 | File | What it shows |
 | --- | --- |
-| [`lib/wagmi.ts`](lib/wagmi.ts) | `topazIdWallet()` + `TOPAZ_ID_CHAIN` (from `@topazdex/id-connect/connectors`) in a wagmi config |
+| [`lib/wagmi.ts`](lib/wagmi.ts) | `topazIdWallet()` (from `@topazdex/id-connect/connectors`) + all five `TOPAZ_ID_CHAINS` (from `@topazdex/id-connect/chains`) in a wagmi config |
 | [`app/(full)/layout.tsx`](app/(full)/layout.tsx) | SSR hydration via `cookieToInitialState`, wrapping `Providers` |
 | [`app/providers.tsx`](app/providers.tsx) | `WagmiProvider` + React Query + `RainbowKitProvider` |
-| [`app/demo.tsx`](app/demo.tsx) | `ConnectButton`, `useTopazIdProfile`, `useTopazIdClient` send (wagmi fallback) |
+| [`app/demo.tsx`](app/demo.tsx) | `ConnectButton` + `useTopazIdProfile` account pill, composing the shared panels below |
+| [`app/chains-panel.tsx`](app/chains-panel.tsx) | The five chains with gas facts (`TOPAZ_ID_CHAIN_INFO`) and a `useSwitchChain` switcher — shared by both routes |
+| [`app/self-send.tsx`](app/self-send.tsx) | `useTopazIdClient` send + `waitForReceipt` confirmation, chain-aware copy and explorer link, wagmi fallback — shared by both routes |
 | [`lib/swap.ts`](lib/swap.ts) | Topaz contract addresses, ABIs, pool detection, swap calldata builders |
 | [`lib/dexscreener.ts`](lib/dexscreener.ts) | USD prices + token logos from the Dexscreener API |
 | [`app/swap-card.tsx`](app/swap-card.tsx) | Live quote (QuoterV2), balances, USD values, approve + swap — one batched confirmation on Topaz ID (`sendCalls`), classic two-step flow on other wallets |
@@ -62,15 +69,35 @@ provider stack, so the two styles stay fully isolated.
 | File | What it shows |
 | --- | --- |
 | [`app/(minimal)/layout.tsx`](app/(minimal)/layout.tsx) | Passes the request cookie to `TopazIdProvider` for SSR |
-| [`app/minimal-providers.tsx`](app/minimal-providers.tsx) | The entire setup: `<TopazIdProvider cookie={cookie}>` |
-| [`app/minimal-demo.tsx`](app/minimal-demo.tsx) | `useTopazIdLogin()` + `useTopazIdProfile()` + `useTopazIdClient()` sends — no RainbowKit |
+| [`app/minimal-providers.tsx`](app/minimal-providers.tsx) | The entire setup: `<TopazIdProvider chains={TOPAZ_ID_CHAINS} cookie={cookie}>` |
+| [`app/minimal-demo.tsx`](app/minimal-demo.tsx) | `useTopazIdLogin()` + `useTopazIdProfile()`, composing the same chains and send panels — no RainbowKit |
 | [`app/nav.tsx`](app/nav.tsx) | Shared nav + the mode toggle (RainbowKit-free, used by both routes) |
+
+## Chains
+
+Topaz ID smart wallets run on five chains, and the wallet has the **same address
+on each**. The demo lists all of them in its wagmi config (`TOPAZ_ID_CHAINS`,
+BNB Chain first, so that's the chain Topaz ID connects on) and lets you switch
+with a button; a real app lists just the chains it deploys to.
+
+| Chain | Id | Gas |
+| --- | --- | --- |
+| BNB Chain | 56 | Sponsored by Topaz ID |
+| Robinhood Chain | 4663 | Paid by the wallet in ETH |
+| Base | 8453 | Paid by the wallet in ETH |
+| Ethereum | 1 | Paid by the wallet in ETH |
+| Arc | 5042 | Paid by the wallet in USDC |
+
+`TOPAZ_ID_CHAIN_INFO` and `isTopazIdGasSponsored` (root entry) drive the copy:
+on BNB Chain the send is free for the user, elsewhere the smart wallet needs a
+small native balance for gas. The swap card is BNB-only and shows a
+"Switch to BNB Chain" button on any other chain.
 
 ## Sending transactions (the smart-wallet client)
 
 The connected Topaz ID account is a **smart contract wallet**, and the smoothest
 way to transact with it is the high-level client that ships with
-`@topazdex/id-connect` 0.4.0:
+`@topazdex/id-connect`:
 
 ```tsx
 import { useTopazIdClient } from "@topazdex/id-connect/react";
@@ -78,7 +105,10 @@ import { useTopazIdClient } from "@topazdex/id-connect/react";
 const { data: topazClient, isTopazId } = useTopazIdClient();
 
 // single send — pass value as a bigint; the SDK formats it for the popup
-await topazClient?.sendTransaction({ to, value: parseEther("0.01") });
+const hash = await topazClient?.sendTransaction({ to, value: parseEther("0.01") });
+
+// confirm — resolves UserOperation hashes and reports the operation's outcome
+const receipt = await topazClient?.waitForReceipt(hash);
 
 // approval + action in ONE consent popup, executed atomically
 await topazClient?.sendCalls({
@@ -99,12 +129,13 @@ pattern for a multi-wallet dapp is exactly what this demo does everywhere:
 ```ts
 const hash = topazClient
   ? await topazClient.sendTransaction({ to, value })
-  : await sendTransactionAsync({ to, value, chainId: 56 }); // any other wallet
+  : await sendTransactionAsync({ to, value }); // any other wallet
 ```
 
-Framework-agnostic apps (no React) can do the same via
-`createTopazIdClient` from `@topazdex/id-connect/actions`. See the
-[package README](https://github.com/topazdex/topaz-id-connect#using-the-wallet)
+Framework-agnostic apps (no React) can do the same via `createTopazIdProvider`
+from `@topazdex/id-connect/provider` and `createTopazIdClient` from
+`@topazdex/id-connect/actions`. See the
+[package README](https://github.com/topazdex/topaz-id-connect#sending-transactions)
 for the full API.
 
 ## The swap card
